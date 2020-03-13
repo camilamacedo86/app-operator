@@ -2,7 +2,6 @@ package appservice
 
 import (
 	"context"
-
 	appv1alpha1 "github.com/example-inc/app-operator/pkg/apis/app/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -124,8 +123,35 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
+	reqLogger.Info("-----------------------------------------------------------------------------------")
+	reqLogger.Info( "Checking namespace app-operator-b (where the operator is not deployed in)")
+	// Update the Memcached status with the pod names
+	// List the pods for this memcached's replicaSet
+	podListB := &corev1.PodList{}
+	listOptsB := []client.ListOption{
+		client.InNamespace("app-operator-b"),
+		client.MatchingLabels{"test": "app"},
+	}
+	err = r.client.List(context.TODO(), podListB, listOptsB...)
+	if err != nil {
+		reqLogger.Error(err, "Failed to list pods in the namespace B", "Memcached.Namespace", instance.Namespace, "Memcached.Name", instance.Name)
+		return reconcile.Result{}, err
+	}
+
+	podNamesB := getPodNames(podListB.Items)
+
+
+	reqLogger.Info("Result of the list in the namespace B", "Quantity in B", len(podNamesB), "Pod Names in B", podNamesB)
+
+	for _, pod := range podListB.Items {
+		reqLogger.Info("Pod found in B", "Pod.Namespace in B", pod.Namespace, "Pod.Name in B", pod.Name)
+	}
+
+	if len(podNamesB) > 0 {
+		reqLogger.Info("********************* Worked - The operator get the resource from namespace B")
+	}
+
 	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 	return reconcile.Result{}, nil
 }
 
@@ -133,6 +159,7 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 func newPodForCR(cr *appv1alpha1.AppService) *corev1.Pod {
 	labels := map[string]string{
 		"app": cr.Name,
+		"test": "app",
 	}
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,4 +177,13 @@ func newPodForCR(cr *appv1alpha1.AppService) *corev1.Pod {
 			},
 		},
 	}
+}
+
+// getPodNames returns the pod names of the array of pods passed in
+func getPodNames(pods []corev1.Pod) []string {
+	var podNames []string
+	for _, pod := range pods {
+		podNames = append(podNames, pod.Name)
+	}
+	return podNames
 }

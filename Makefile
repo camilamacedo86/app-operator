@@ -1,14 +1,13 @@
 .DEFAULT_GOAL:=help
 SHELL:=/bin/bash
 NAMESPACE=app-operator-a
-NAMESPACE2=app-operator-b
-NAMESPACE3=invalid
+NAMESPACE_B=app-operator-b
 ##@ Application
 
 install: ## Install all resources (CR/CRD's, RBAC and Operator)
 	@echo ....... Creating namespace ....... 
 	- kubectl create namespace ${NAMESPACE}
-	- kubectl create namespace ${NAMESPACE2}
+	- kubectl create namespace ${NAMESPACE_B}
 	@echo ....... Applying CRDs .......
 	- kubectl apply -f deploy/crds/app.example.com_appservices_crd.yaml -n ${NAMESPACE}
 	@echo ....... Applying Rules and Service Account .......
@@ -19,13 +18,23 @@ install: ## Install all resources (CR/CRD's, RBAC and Operator)
 	- kubectl apply -f deploy/operator.yaml -n ${NAMESPACE}
 	@echo ....... Creating the CRs .......
 	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE}
-## Test that should return value from the
-test: ## test second ns
-	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE2}
+	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE_B}
 
-test-inv: ## test second ns
-	- kubectl create namespace ${NAMESPACE3}
-	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE3}
+local: ## Install all resources (CR/CRD's, RBAC and Operator)
+	@echo ....... Creating namespace .......
+	- kubectl create namespace ${NAMESPACE}
+	- kubectl create namespace ${NAMESPACE_B}
+	@echo ....... Applying CRDs .......
+	- kubectl apply -f deploy/crds/app.example.com_appservices_crd.yaml -n ${NAMESPACE}
+	@echo ....... Applying Rules and Service Account .......
+	- kubectl apply -f deploy/role.yaml -n ${NAMESPACE}
+	- kubectl apply -f deploy/role_binding.yaml  -n ${NAMESPACE}
+	- kubectl apply -f deploy/service_account.yaml  -n ${NAMESPACE}
+
+apply:
+	@echo ....... Creating the CRs .......
+	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE}
+	- kubectl apply -f deploy/crds/app.example.com_v1alpha1_appservice_cr.yaml -n ${NAMESPACE_B}
 
 uninstall: ## Uninstall all that all performed in the $ make install
 	@echo ....... Uninstalling .......
@@ -39,7 +48,7 @@ uninstall: ## Uninstall all that all performed in the $ make install
 	- kubectl delete -f deploy/operator.yaml -n ${NAMESPACE}
 	@echo ....... Deleting namespace ${NAMESPACE}.......
 	- kubectl delete namespace ${NAMESPACE}
-	- kubectl delete namespace ${NAMESPACE2}
+	- kubectl delete namespace ${NAMESPACE_B}
 
 ##@ Development
 

@@ -77,6 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	log.Info(" The value of namespace is : "+ namespace)
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
 	if err != nil {
@@ -86,15 +87,16 @@ func main() {
 
 	ctx := context.TODO()
 	// Become the leader before proceeding
-	err = leader.Become(ctx, "app-operator-lock")
+	err = leader.Become(ctx, "test-lock")
 	if err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
 
+	mockNS := ""
 	// Set default manager options
 	options := manager.Options{
-		Namespace:          namespace,
+		Namespace:         mockNS,
 		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
 	}
 
@@ -143,11 +145,16 @@ func main() {
 // addMetrics will create the Services and Service Monitors to allow the operator export the metrics by using
 // the Prometheus operator
 func addMetrics(ctx context.Context, cfg *rest.Config) {
-	if err := serveCRMetrics(cfg); err != nil {
+	// Get the namespace the operator is currently deployed in.
+	operatorNs, err := k8sutil.GetOperatorNamespace()
+	if err != nil {
 		if errors.Is(err, k8sutil.ErrRunLocal) {
 			log.Info("Skipping CR metrics server creation; not running in a cluster.")
 			return
 		}
+	}
+
+	if err := serveCRMetrics(cfg, operatorNs); err != nil {
 		log.Info("Could not generate and serve custom resource metrics", "error", err.Error())
 	}
 
@@ -167,15 +174,8 @@ func addMetrics(ctx context.Context, cfg *rest.Config) {
 	// necessary to configure Prometheus to scrape metrics from this operator.
 	services := []*v1.Service{service}
 
-	// Get the namespace the operator is currently deployed in.
-	operatorNs, err := k8sutil.GetOperatorNamespace()
-	if err != nil {
-		log.Error(err, "")
-		os.Exit(1)
-	}
 	// The ServiceMonitor is created in the same namespace where the operator is deployed
 	_, err = metrics.CreateServiceMonitors(cfg, operatorNs, services)
-
 	if err != nil {
 		log.Info("Could not create ServiceMonitor object", "error", err.Error())
 		// If this operator is deployed to a cluster without the prometheus-operator running, it will return
@@ -188,32 +188,22 @@ func addMetrics(ctx context.Context, cfg *rest.Config) {
 
 // serveCRMetrics gets the Operator/CustomResource GVKs and generates metrics based on those types.
 // It serves those metrics on "http://metricsHost:operatorMetricsPort".
-func serveCRMetrics(cfg *rest.Config) error {
-	// Below function returns filtered operator/CustomResource specific GVKs.
-	// For more control override the below GVK list with your own custom logic.
+func serveCRMetrics(cfg *rest.Config, operatorNs string) error {
+	// The function below returns a list of filtered operator/CR specific GVKs. For more control, override the GVK list below
+	// with your own custom logic. Note that if you are adding third party API schemas, probably you will need to
+	// customize this implementation to avoid permissions issues.
 	filteredGVK, err := k8sutil.GetGVKsFromAddToScheme(apis.AddToScheme)
 	if err != nil {
 		return err
 	}
-	// Get the namespace the operator is currently deployed in.
-	operatorNs, err := k8sutil.GetOperatorNamespace()
-	if err != nil {
-		return err
-	}
-	// To generate metrics in other namespaces, add the values below.
 
-	// Get the value from WATCH_NAMESPACES
-	watchNamespace, err := k8sutil.GetWatchNamespace()
+	// The metrics will be generated from the namespaces which are returned here.
+	// NOTE that passing nil or an empty list of namespaces in GenerateAndServeCRMetrics will result in an error.
+	ns, err := kubemetrics.GetNamespacesForMetrics(operatorNs)
 	if err != nil {
 		return err
 	}
-	//The metrics will be generated from the namespaces which are in ns
-	//NOTE that passing nil or an empty list of namespaces will result in an error.
-	ns := []string{operatorNs}
-	// To generate metrics from WATCH_NAMESPACES values if it be as for example ns1,ns2
-	if strings.Contains(watchNamespace, ",") {
-		ns = strings.Split(watchNamespace, ",")
-	}
+
 	// Generate and serve custom resource specific metrics.
 	err = kubemetrics.GenerateAndServeCRMetrics(cfg, ns, filteredGVK, metricsHost, operatorMetricsPort)
 	if err != nil {

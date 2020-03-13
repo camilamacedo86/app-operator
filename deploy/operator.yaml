@@ -22,7 +22,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: WATCH_NAMESPACE
-              value: "app-operator-a,app-operator-b"
+              value: ""
             - name: POD_NAME
               valueFrom:
                 fieldRef:
